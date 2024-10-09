@@ -196,6 +196,7 @@ let verilog_rewrites =
     ("merge_function_clauses", []);
     ("recheck_defs", []);
     ("constant_fold", [String_arg "c"]);
+    ("unroll_constant_loops", [If_flag opt_unroll_loops]);
   ]
 
 module type JIB_CONFIG = sig

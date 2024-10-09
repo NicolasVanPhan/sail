@@ -4204,6 +4204,161 @@ let rewrite_truncate_hex_literals _type_env defs =
     { rewriters_base with rewrite_exp = (fun _ -> fold_exp { id_exp_alg with e_aux = rewrite_aux }) }
     defs
 
+(*
+module My_debug = struct
+  let debug_string_of_lit (L_aux (lit, _)) =
+    match lit with
+    | L_unit               -> "L_unit"
+    | L_zero               -> "L_zero"
+    | L_one                -> "L_one"
+    | L_true               -> "L_true"
+    | L_false              -> "L_false"
+    | L_num     big_int    -> "L_num    ( " ^ (Big_int.to_string big_int) ^ " )"
+    | L_hex     str        -> "L_hex    ( " ^ str ^ " )"
+    | L_bin     str        -> "L_bin    ( " ^ str ^ " )"
+    | L_undef              -> "L_undef"
+    | L_string  str        -> "L_string ( " ^ str ^ " )"
+    | L_real    str        -> "L_real  ( " ^ str ^ " )"
+
+  let rec debug_string_of_exp (E_aux (exp, _) as e) =
+    match exp with
+    | E_id v                                             -> "E_id        ( " ^ (string_of_exp e) ^ " )"
+    | E_lit lit                                          -> "E_lit       ( " ^ (debug_string_of_lit lit) ^ " )"
+    | E_app_infix (x, op, y)                             -> "E_app_infix ( " ^ (string_of_exp e) ^ " )"
+    | E_app (f, [E_aux (E_lit (L_aux (L_unit, _)), _)])  -> "E_app_weird ( " ^ (string_of_exp e) ^ " )"
+    | E_app (f, args)                                    -> "E_app       ( "
+        ^ "id:   ( " ^ (string_of_id f) ^ " )"
+        ^ "args: [ " ^ (Util.string_of_list ", " debug_string_of_exp args) ^ " ]"
+        ^ " )"
+    | E_var (lexp, binding, exp)                         -> "E_var       ( " ^ (string_of_exp e) ^ " )"
+    | E_typ (typ, exp)                                   -> "E_typ       ( " ^ (string_of_exp e) ^ " )"
+    | _ -> "other expr"
+end (* module Debug_pp_raw_ast *)
+*)
+let opt_unroll_loops = ref false
+let opt_unroll_loops_max_iter = ref 0
+
+(* The loop unrolling pass replaces :
+       foreach k in 0 to 3 by 1 increasing:
+         f(k, foo, bar) + k
+   with
+       f(0, foo, bar) + 0;
+       f(1, foo, bar) + 1;
+       f(2, foo, bar) + 2;
+       f(3, foo, bar) + 3;
+*)
+let rewrite_unroll_constant_loops _type_env defs =
+
+  (* This pass replaces expressions like
+         f(k, foo, bar) + k
+     with
+         f(42, foo, bar) + 42
+  *)
+  let rewrite_exp_replace_id_with_num (id : string) (num : Z.t) =
+    let rewrite_aux (id : string) (num : Z.t) (e, annot) =
+      match e with
+      | E_id (Id_aux (Id v, _)) when String.equal v id  ->  E_aux( E_lit (L_aux(L_num num, Parse_ast.Unknown)) , annot)
+      | _ -> E_aux (e, annot)
+    in
+    fun e -> rewrite_exp { rewriters_base with rewrite_exp = (fun _ -> fold_exp { id_exp_alg with e_aux = rewrite_aux id num }) } e
+  in
+
+  (* Builds a list of integers from a start, end, step and direction
+     list_of_ord_range 0 10 2 inc = 0, 2, 4, 6, 8, 10
+     list_of_ord_range 7 0 1 dec = 7, 6, 5, 4, 3, 2, 1, 0
+  *)
+  let list_of_ord_range (Ord_aux (ord, _)) (n_start : Z.t) (n_end : Z.t) (n_step : Z.t) : Z.t list =
+    let list_of_range ns ne =
+      let rec aux n =
+        if (Z.gt n ne) then []
+        else n :: (aux @@ Z.add n n_step)
+      in
+      aux ns
+    in
+    match ord with
+    | Ord_inc -> list_of_range n_start n_end
+    | Ord_dec -> List.rev @@ list_of_range n_end n_start
+  in
+
+  (* This is the main rewrite function of the pass, looking for all the E_for loops
+     and unrolling them using the above helpers *)
+  let rewrite_aux (e, annot) =
+    match e with
+    (* Constant loops, i.e. loops where bounds and step are big nums *)
+    (* e.g. the goal is th replace :
+       foreach k in 0 to 3 by 1 increasing:
+         f(k, foo, bar) + k
+       with
+           f(0, foo, bar) + 0;
+           f(1, foo, bar) + 1;
+           f(2, foo, bar) + 2;
+           f(3, foo, bar) + 3;
+    *)
+    | E_for ( id                                          (* 'k' in our example *)
+            , E_aux (E_lit (L_aux(L_num n_start, _)), _)  (* '0' in our example *)
+            , E_aux (E_lit (L_aux(L_num n_end,   _)), _)  (* '3' in our example *)
+            , E_aux (E_lit (L_aux(L_num n_step,  _)), _)  (* '1' in our example *)
+            , atyp                                        (* 'increasing' in our example *)
+            , e_loop_body  (* 'f(k, foo, bar) + k'  in our example *)
+            ) ->
+      (
+         (* Debug printing *)
+         (*
+         print_endline   "[DEBUG_NP] Detected E_for expression with literals";
+         print_endline ( "[DEBUG_NP] id : " ^ string_of_id id );
+         print_endline ( "[DEBUG_NP] atyp : " ^ string_of_order atyp );
+         print_endline ( "[DEBUG_NP] n_start : " ^ Z.to_string n_start );
+         print_endline ( "[DEBUG_NP] n_end   : " ^ Z.to_string n_end   );
+         print_endline ( "[DEBUG_NP] n_step  : " ^ Z.to_string n_step  );
+         *)
+
+         (* Build a range out of the bounds
+            in our example, from (start=0, end=3, step=1)
+            the range will be the list [0; 1; 2; 3]
+         *)
+         let range = list_of_ord_range atyp n_start n_end n_step in
+         (*
+         print_string "Range : ( ";
+         List.iter
+             (fun z -> print_string @@ (Z.to_string z) ^ ", ")
+             range;
+         print_string " )";
+         print_endline ( "[DEBUG_NP] e_loop_body : " ^ string_of_exp e_loop_body );
+         *)
+
+         (* Only unroll "small" loops, those with less than 'max_iter' iterations *)
+         if !opt_unroll_loops_max_iter <> 0
+            && List.length range > !opt_unroll_loops_max_iter
+         then E_aux(e, annot)
+         else (
+             (* Build the final expression, a block of n times the body *)
+             let bodies = List.map
+                 (fun z -> rewrite_exp_replace_id_with_num "i" z e_loop_body)
+                 range
+             in
+             E_aux (E_block bodies, annot)
+         )
+      )
+
+    (* Non-Constant loops, i.e. loops where bounds contain complex expressions, not just literals *)
+    | E_for (id, e1, e2, e3, atyp, e4) -> (
+         (*
+         print_endline   "[DEBUG_NP] Detected E_for expression";
+         print_endline ( "[DEBUG_NP] id : " ^ string_of_id id );
+         print_endline ( "[DEBUG_NP] atyp : " ^ string_of_order atyp );
+         print_endline ( "[DEBUG_NP] e1 : " ^ My_debug.debug_string_of_exp e1 );
+         print_endline ( "[DEBUG_NP] e2 : " ^ My_debug.debug_string_of_exp e2 );
+         print_endline ( "[DEBUG_NP] e3 : " ^ My_debug.debug_string_of_exp e3 );
+         print_endline ( "[DEBUG_NP] e4 : " ^ string_of_exp e4 );
+         *)
+         E_aux (e, annot)
+      )
+    | _ -> E_aux (e, annot)
+  in
+  rewrite_ast_base
+    { rewriters_base with rewrite_exp = (fun _ -> fold_exp { id_exp_alg with e_aux = rewrite_aux }) }
+    defs
+
 (** Remove bitfield records and turn them into plain bitvectors
     This can improve performance for Isabelle, because processing record types is slow there
     (and we don't gain much by having record types with just a `bits` field).
@@ -4436,6 +4591,7 @@ let all_rewriters =
     ("pat_string_append", basic_rewriter rewrite_ast_pat_string_append);
     ("mapping_patterns", basic_rewriter (fun _ -> Mappings.rewrite_ast));
     ("truncate_hex_literals", basic_rewriter rewrite_truncate_hex_literals);
+    ("unroll_constant_loops", basic_rewriter rewrite_unroll_constant_loops);
     ("mono_rewrites", basic_rewriter mono_rewrites);
     ("complete_record_params", basic_rewriter rewrite_complete_record_params);
     ("toplevel_nexps", basic_rewriter rewrite_toplevel_nexps);
