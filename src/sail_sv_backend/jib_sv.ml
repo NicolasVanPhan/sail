@@ -964,7 +964,13 @@ module Make (Config : CONFIG) = struct
                 let clexp =
                   match creturn with
                   | CR_one clexp -> clexp
-                  | CR_multi _ -> Reporting.unreachable l __POS__ "Multiple return generator primitive found"
+                  | CR_multi clexps -> (
+                      match clexps with
+                      | [clexp] -> clexp
+                      | [] -> Reporting.unreachable l __POS__ "[NEW] Multiple return generator primitive found (CR_Multi clexps with length(clexps) == 0)"
+                      | _ -> Reporting.unreachable l __POS__ "[NEW] Multiple return generator primitive found (CR_Multi clexps with length(clexps) >= 2)"
+                      )
+                      (* List.iter (fun clexp -> print_endline @@ "[DEBUG NEW] " ^ (string_of_clexp clexp)) clexps; *)
                 in
                 let* value = Smt_gen.fmap (Smt_exp.simp (fun _ -> None)) (generator args (clexp_ctyp clexp)) in
                 begin
