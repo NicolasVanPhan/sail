@@ -4280,79 +4280,111 @@ let rewrite_unroll_constant_loops _type_env defs =
     | Ord_dec -> List.rev @@ list_of_range n_end n_start
   in
 
-  (* This is the main rewrite function of the pass, looking for all the E_for loops
-     and unrolling them using the above helpers *)
-  let rewrite_aux (e, annot) =
-    match e with
-    (* Constant loops, i.e. loops where bounds and step are big nums *)
-    (* e.g. the goal is th replace :
+  (* This is the main rewrite function of the pass.
+     Replacing :
        foreach k in 0 to 3 by 1 increasing:
          f(k, foo, bar) + k
-       with
-           f(0, foo, bar) + 0;
-           f(1, foo, bar) + 1;
-           f(2, foo, bar) + 2;
-           f(3, foo, bar) + 3;
-    *)
-    | E_for ( id                                          (* 'k' in our example *)
-            , E_aux (E_lit (L_aux(L_num n_start, _)), _)  (* '0' in our example *)
-            , E_aux (E_lit (L_aux(L_num n_end,   _)), _)  (* '3' in our example *)
-            , E_aux (E_lit (L_aux(L_num n_step,  _)), _)  (* '1' in our example *)
-            , atyp                                        (* 'increasing' in our example *)
-            , e_loop_body  (* 'f(k, foo, bar) + k'  in our example *)
+     with
+         f(0, foo, bar) + 0;
+         f(1, foo, bar) + 1;
+         f(2, foo, bar) + 2;
+         f(3, foo, bar) + 3;
+  *)
+  let rewrite_aux (e, annot) =
+    match e with
+    | E_for ( id                      (* 'k' in our example *)
+            , E_aux (_, (_, tannot1)) (* '0' in our example *)
+            , E_aux (_, (_, tannot2)) (* '3' in our example *)
+            , E_aux (_, (_, tannot3)) (* '1' in our example *)
+            , atyp                    (* 'increasing' in our example *)
+            , e_loop_body             (* 'f(k, foo, bar) + k'  in our example *)
             ) ->
       (
-         (* Debug printing *)
-         (*
-         print_endline   "[DEBUG_NP] Detected E_for expression with literals";
-         print_endline ( "[DEBUG_NP] id : " ^ string_of_id id );
-         print_endline ( "[DEBUG_NP] atyp : " ^ string_of_order atyp );
-         print_endline ( "[DEBUG_NP] n_start : " ^ Z.to_string n_start );
-         print_endline ( "[DEBUG_NP] n_end   : " ^ Z.to_string n_end   );
-         print_endline ( "[DEBUG_NP] n_step  : " ^ Z.to_string n_step  );
-         *)
+        (* Debug printing *)
+        (* print_endline   "[DEBUG_NP] Detected E_for expression with literals";
+        print_endline ( "[DEBUG_NP] id : " ^ string_of_id id );
+        print_endline ( "[DEBUG_NP] atyp : " ^ string_of_order atyp );
+        print_endline ( "[DEBUG_NP] E1 : " ^ string_of_exp e1 );
+        print_endline ( "[DEBUG_NP] E2 : " ^ string_of_exp e2 );
+        print_endline ( "[DEBUG_NP] E3 : " ^ string_of_exp e3 );
+        print_endline ( "[DEBUG_NP] T1 : " ^ string_of_tannot tannot1 );
+        print_endline ( "[DEBUG_NP] T2 : " ^ string_of_tannot tannot2 );
+        print_endline ( "[DEBUG_NP] T3 : " ^ string_of_tannot tannot3 ); *)
 
-         (* Build a range out of the bounds
-            in our example, from (start=0, end=3, step=1)
-            the range will be the list [0; 1; 2; 3]
-         *)
-         let range = list_of_ord_range atyp n_start n_end n_step in
-         (*
-         print_string "Range : ( ";
-         List.iter
-             (fun z -> print_string @@ (Z.to_string z) ^ ", ")
-             range;
-         print_string " )";
-         print_endline ( "[DEBUG_NP] e_loop_body : " ^ string_of_exp e_loop_body );
-         *)
+        (* We get the int values of the bounds from their types inferred by the typer *)
+        let int_of_tannot_opt tannot =
+          let int_of_typ_aux_opt : typ_aux -> Z.t option = function
+            | Typ_app (id, [A_aux (A_nexp nexp, _)]) when Id.compare id (mk_id "atom") = 0 ->
+              int_of_nexp_opt @@ nexp_simp nexp
+            | _ -> None
+          in
+          match destruct_tannot tannot with
+          | Some (_, Typ_aux (typ, l)) -> int_of_typ_aux_opt typ
+          | None -> None
+        in
+        (* let string_of_int_opt = function
+        | Some z -> Z.to_string z
+        | None -> "None"
+        in *)
+        let n_start_opt = int_of_tannot_opt tannot1 in
+        let n_end_opt   = int_of_tannot_opt tannot2 in
+        let n_step_opt  = int_of_tannot_opt tannot3 in
 
-         (* Only unroll "small" loops, those with less than 'max_iter' iterations *)
-         if !opt_unroll_loops_max_iter <> 0
-            && List.length range > !opt_unroll_loops_max_iter
-         then E_aux(e, annot)
-         else (
-             (* Build the final expression, a block of n times the body *)
-             let bodies = List.map
-                 (fun z -> rewrite_exp_replace_id_with_num "i" z e_loop_body)
-                 range
-             in
-             E_aux (E_block bodies, annot)
-         )
-      )
+        (* print_endline ( "[DEBUG_NP] T1 simpl : " ^ (string_of_int_opt n_start_opt) );
+        print_endline ( "[DEBUG_NP] T2 simpl : " ^ (string_of_int_opt n_end_opt) );
+        print_endline ( "[DEBUG_NP] T3 simpl : " ^ (string_of_int_opt n_step_opt) ); *)
 
-    (* Non-Constant loops, i.e. loops where bounds contain complex expressions, not just literals *)
-    | E_for (id, e1, e2, e3, atyp, e4) -> (
-         (*
-         print_endline   "[DEBUG_NP] Detected E_for expression";
-         print_endline ( "[DEBUG_NP] id : " ^ string_of_id id );
-         print_endline ( "[DEBUG_NP] atyp : " ^ string_of_order atyp );
-         print_endline ( "[DEBUG_NP] e1 : " ^ My_debug.debug_string_of_exp e1 );
-         print_endline ( "[DEBUG_NP] e2 : " ^ My_debug.debug_string_of_exp e2 );
-         print_endline ( "[DEBUG_NP] e3 : " ^ My_debug.debug_string_of_exp e3 );
-         print_endline ( "[DEBUG_NP] e4 : " ^ string_of_exp e4 );
-         *)
-         E_aux (e, annot)
-      )
+        (* Abort unrolling with a warning when types infered are too complex (i.e. not immediate literals) *)
+        match n_start_opt, n_end_opt, n_step_opt with
+        | Some n_start, Some n_end, Some n_step -> (
+
+            (* Build a range out of the bounds
+               in our example, from (start=0, end=3, step=1)
+               the range will be the list [0; 1; 2; 3]
+            *)
+            let range = list_of_ord_range atyp n_start n_end n_step in
+
+            (*
+            print_string "Range : ( ";
+            List.iter
+                (fun z -> print_string @@ (Z.to_string z) ^ ", ")
+                range;
+            print_string " )";
+            print_endline ( "[DEBUG_NP] e_loop_body : " ^ string_of_exp e_loop_body );
+            *)
+
+            (* Only unroll "small" loops, those with less than 'max_iter' iterations *)
+            if !opt_unroll_loops_max_iter <> 0
+               && List.length range > !opt_unroll_loops_max_iter
+            then E_aux(e, annot)
+            else (
+                (* Build the final expression, a block of n times the body *)
+                let bodies = List.map
+                    (fun z -> rewrite_exp_replace_id_with_num "i" z e_loop_body)
+                    range
+                in
+                E_aux (E_block bodies, annot)
+            ) (* else *)
+          ) (* Some n_start... *)
+        | _ -> (
+            let e' = E_aux (e, annot) in
+            let (l : Parse_ast.l), _tannot = annot in
+            let string_of_position (p : Lexing.position) : string =
+              p.pos_fname ^ ":" ^ (string_of_int p.pos_lnum)
+            in
+            let rec string_of_l : Parse_ast.l -> string = function
+            | Unknown                -> "Unknown"
+            | Unique (i, l)          -> Printf.sprintf "Unique( %s, %s)" (string_of_int i) (string_of_l l)
+            | Generated l            -> Printf.sprintf "Generated( %s ) " (string_of_l l)
+            | Hint (str, l1, l2)     -> Printf.sprintf "Hint( %s, %s, %s )" str (string_of_l l1) (string_of_l l2)
+            | Range (p1, p2)         -> Printf.sprintf "Range( %s, %s )" (string_of_position p1) (string_of_position p2)
+            in
+            print_endline  "[WARNING] Cannot unroll the loop because the bounds don't have integer literal types.";
+            print_endline ("          Expression : " ^ string_of_exp e') ;
+            print_endline ("          Position   : " ^ string_of_l l);
+            e'
+           ) (* None *)
+      ) (* E_for ... *)
     | _ -> E_aux (e, annot)
   in
   rewrite_ast_base
