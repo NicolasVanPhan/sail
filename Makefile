@@ -5,7 +5,7 @@ all: sail
 isail: sail
 
 sail:
-	dune build --release
+	dune build @all --profile=dev
 
 install: sail
 	dune install
