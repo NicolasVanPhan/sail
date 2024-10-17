@@ -237,6 +237,14 @@ let rec map_split f = function
           (xs', y' :: ys')
     )
 
+let rec map_filter f = function
+  | [] -> []
+  | x :: xs -> (
+    match f x with
+    | Some x' -> x' :: (map_filter f xs)
+    | None -> map_filter f xs
+  )
+
 let list_empty = function [] -> true | _ -> false
 
 let list_index p l =

@@ -65,6 +65,7 @@ let string_of_name =
   | Return n -> "return" ^ ssa_num n
   | Current_exception n -> "current_exception" ^ ssa_num n
   | Throw_location n -> "throw_location" ^ ssa_num n
+  | _ -> failwith "unused"
 
 let rec string_of_clexp = function
   | CL_id (id, ctyp) -> string_of_name id
@@ -136,12 +137,12 @@ module Ir_formatter = struct
       | I_copy (clexp, cval) -> add_instr n buf indent (string_of_clexp clexp ^ " = " ^ C.value cval)
       | I_funcall (clexp, false, id, args) ->
           add_instr n buf indent
-            (string_of_clexp clexp ^ " = " ^ string_of_uid id ^ "(" ^ Util.string_of_list ", " C.value args ^ ")" ^ " `"
+            ("unused" ^ " = " ^ string_of_uid id ^ "(" ^ Util.string_of_list ", " C.value args ^ ")" ^ " `"
            ^ output_loc l
             )
       | I_funcall (clexp, true, id, args) ->
           add_instr n buf indent
-            (string_of_clexp clexp ^ " = $" ^ string_of_uid id ^ "(" ^ Util.string_of_list ", " C.value args ^ ")"
+            ("unused" ^ " = $" ^ string_of_uid id ^ "(" ^ Util.string_of_list ", " C.value args ^ ")"
            ^ " `" ^ output_loc l
             )
       | I_return cval -> add_instr n buf indent (C.keyword "return" ^ " " ^ C.value cval)

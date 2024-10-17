@@ -1,12 +1,12 @@
-(executable
+(library
  (name sail_plugin_c)
- (modes
-  (native plugin))
- (libraries libsail))
+ (public_name sail_c_backend)
+ (modes byte native)        ; Build both bytecode (.cma) and native (.cmxs)
+ (libraries libsail))        ; Dependencies for your plugin
 
 (install
  (section
   (site
    (libsail plugins)))
  (package sail_c_backend)
- (files sail_plugin_c.cmxs))
+ (files sail_plugin_c.cmxs sail_plugin_c.cma))

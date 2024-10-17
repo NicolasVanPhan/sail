@@ -6,10 +6,10 @@
   (flags
    (:standard -w -33 -w -27 -w -32 -w -26 -w -37))))
 
-(executable
+(library
  (name sail_plugin_smt)
- (modes
-  (native plugin))
+ (public_name sail_smt_backend)
+ (modes native byte)
  (libraries libsail))
 
 (install
@@ -17,4 +17,4 @@
   (site
    (libsail plugins)))
  (package sail_smt_backend)
- (files sail_plugin_smt.cmxs))
+ (files sail_plugin_smt.cmxs sail_plugin_smt.cma))

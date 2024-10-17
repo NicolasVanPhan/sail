@@ -7,5 +7,6 @@ export SAIL_DIR
 
 # Where to find plugins
 export DUNE_DIR_LOCATIONS="libsail:share:$SAIL_DIR/_build/install/default/share/libsail"
-exec "$SAIL_DIR/_build/install/default/bin/sail" $*
+# exec "$SAIL_DIR/_build/install/default/bin/sail" $*
+exec ocamldebug "$SAIL_DIR/_build/default/src/bin/sail.bc" $*
 

@@ -6,10 +6,10 @@
   (flags
    (:standard -w -27))))
 
-(executable
+(library
  (name sail_plugin_lem)
- (modes
-  (native plugin))
+ (public_name sail_lem_backend)
+ (modes native byte)
  (libraries libsail))
 
 (install
@@ -17,4 +17,4 @@
   (site
    (libsail plugins)))
  (package sail_lem_backend)
- (files sail_plugin_lem.cmxs))
+ (files sail_plugin_lem.cmxs sail_plugin_lem.cma))

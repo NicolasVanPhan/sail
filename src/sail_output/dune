@@ -1,7 +1,7 @@
-(executable
+(library
  (name sail_plugin_output)
- (modes
-  (native plugin))
+ (public_name sail_output)
+ (modes native byte)
  (libraries libsail))
 
 (install
@@ -9,4 +9,4 @@
   (site
    (libsail plugins)))
  (package sail_output)
- (files sail_plugin_output.cmxs))
+ (files sail_plugin_output.cmxs sail_plugin_output.cma))

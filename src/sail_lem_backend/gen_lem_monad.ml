@@ -50,20 +50,20 @@
 
 open Libsail
 open Ast
-open Ast_defs
-open Ast_util
-open PPrint
+(* open Ast_defs *)
+(* open Ast_util *)
+(* open PPrint *)
 open Pretty_print_common
-open Pretty_print_lem
+(* open Pretty_print_lem *)
 open Callgraph
 
 let outcome_spec_of_def = function DEF_outcome (OV_aux (outcome, _), _) -> Some outcome | _ -> None
 
-let outcome_specs_of_ast ast = Util.map_filter outcome_spec_of_def ast.defs
+let outcome_specs_of_ast ast = failwith "unused" (* Util.map_filter outcome_spec_of_def ast.defs *)
 
 let id_of_outcome (OV_outcome (id, _, _)) = id
 
-let gen_monad_def env ast =
+let gen_monad_def env ast = failwith "unused" (*
   let specs = outcome_specs_of_ast ast in
   let kopts_of_typschm (TypSchm_aux (TypSchm_ts (tq, typ), _)) =
     KOptSet.union (KOptSet.of_list (quant_kopts tq)) (kopts_of_typ typ)
@@ -84,7 +84,7 @@ let gen_monad_def env ast =
   let mk_variant ?(final = false) id args ret =
     let cont = if final then [] else if is_unit_typ ret then [monad_typ] else [function_typ [ret] monad_typ] in
     let outcome_typ = tuple_typ (args @ cont) in
-    Tu_aux (Tu_ty_id (outcome_typ, id), Parse_ast.Unknown)
+    failwith "unused" (* Tu_aux (Tu_ty_id (outcome_typ, id), Parse_ast.Unknown) *)
   in
   let outcome_of_spec (OV_outcome (id, typschm, _)) =
     let typ = match typschm with TypSchm_aux (TypSchm_ts (_, typ), _) -> typ in
@@ -102,6 +102,7 @@ let gen_monad_def env ast =
   in
   let outcomes = default_outcomes @ List.map outcome_of_spec specs in
   TD_aux (TD_variant (mk_id "monad", monad_typq, outcomes, false), no_annot)
+  *)
 
 let outcome_dependencies env ast =
   let module NodeSet = Set.Make (Node) in
@@ -113,12 +114,12 @@ let outcome_dependencies env ast =
   let g = G.prune roots cuts g in
   filter_ast cuts g ast
 
-let doc_dependencies effect_info env ast =
+let doc_dependencies effect_info env ast = failwith "unused" (*
   let deps_ast = outcome_dependencies env ast in
   let type_defs = List.filter (function DEF_type _ -> true | _ -> false) deps_ast.defs in
-  separate empty (List.map (doc_def_lem effect_info env) type_defs)
+  separate empty (List.map (doc_def_lem effect_info env) type_defs) *)
 
-let doc_lem_monad env ast = doc_typdef_lem env (gen_monad_def env ast)
+let doc_lem_monad env ast = failwith "unused" (* doc_typdef_lem env (gen_monad_def env ast) *)
 
 let output_lem_monad effect_info env ast =
   let imports = ["Pervasives_extra"; "Sail2_values"; "Sail2_string"] in

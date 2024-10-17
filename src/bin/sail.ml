@@ -587,7 +587,7 @@ let main () =
             List.iter
               (fun plugin ->
                 let path = Filename.concat dir plugin in
-                if Filename.extension plugin = ".cmxs" then load_plugin options path
+                if Filename.extension plugin = ".cma" then load_plugin options path
               )
               (Array.to_list (Sys.readdir dir))
         | [] -> ()
