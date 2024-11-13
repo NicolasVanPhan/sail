@@ -390,6 +390,7 @@ let verilog_target out_opt { ast; effect_info; env; default_sail_dir; _ } =
   let sail_sv_libdir = Filename.concat (Filename.concat sail_dir "lib") "sv" in
   let out = match out_opt with None -> "out" | Some name -> name in
 
+  Pretty_print_sail.dump_ast_to_file "np_step_1.ast" ast;
   let ast, env, effect_info =
     let open Specialize in
     match !opt_int_specialize with
@@ -397,10 +398,14 @@ let verilog_target out_opt { ast; effect_info; env; default_sail_dir; _ } =
     | None -> (ast, env, effect_info)
   in
 
+  Pretty_print_sail.dump_ast_to_file "np_step_2.ast" ast;
   let cdefs, ctx = jib_of_ast SV.make_call_precise env ast effect_info in
 
+  Jib_util.dump_cdefs_to_file "np_step_3.cdefs" cdefs;
   let cdefs, ctx = Jib_optimize.remove_tuples cdefs ctx in
+  Jib_util.dump_cdefs_to_file "np_step_4.cdefs" cdefs;
   let cdefs = Jib_optimize.remove_mutrec cdefs in
+  Jib_util.dump_cdefs_to_file "np_step_5.cdefs" cdefs;
   let registers = register_types cdefs in
 
   let include_doc =
@@ -421,20 +426,30 @@ let verilog_target out_opt { ast; effect_info; env; default_sail_dir; _ } =
 
   let spec_info = Jib_sv.collect_spec_info ctx cdefs in
 
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 3" in
   let svir, fn_ctyps =
     List.fold_left
       (fun (defs, fn_ctyps) cdef ->
-        let defs', fn_ctyps = svir_cdef spec_info ctx fn_ctyps cdef in
-        (List.rev defs' @ defs, fn_ctyps)
+        let cdef_print = string_of_cdef cdef in
+        if String.equal cdef_print "CDEF_fundef   - encdec_forwards" then (defs, fn_ctyps) else (
+          prerr_endline @@ Printf.sprintf "[DEBUG-CUSTOM] svir_fold cdef : %s" cdef_print;
+          let defs', fn_ctyps = svir_cdef spec_info ctx fn_ctyps cdef in
+          (List.rev defs' @ defs, fn_ctyps)
+        )
       )
       ([], Bindings.empty) cdefs
   in
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 4" in
   let svir = List.rev svir in
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 5" in
   let svir_types, svir = List.partition Sv_ir.is_typedef svir in
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 6" in
   let library_svir = SV.Primops.get_generated_library_defs () in
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 7" in
   let toplevel_svir =
     Option.fold ~none:[] ~some:(fun m -> [Sv_ir.mk_def (Sv_ir.SVD_module m)]) (SV.toplevel_module spec_info)
   in
+  let _ = prerr_endline "[DEBUG-CUSTOM] CHECKPOINT 8" in
 
   let svir = library_svir @ svir @ toplevel_svir in
 

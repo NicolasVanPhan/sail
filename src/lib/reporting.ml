@@ -185,7 +185,10 @@ let dest_err ?(interactive = false) = function
 exception Fatal_error of error
 
 (* Abbreviations for the very common cases *)
-let err_todo l m = Fatal_error (Err_todo (l, m))
+let err_todo l m =
+  let backtrace = Printexc.get_callstack 250 in
+  let m =  m ^ "\n\n" ^ Printexc.raw_backtrace_to_string backtrace in
+  Fatal_error (Err_todo (l, m))
 let err_unreachable l ocaml_pos m =
   let backtrace = Printexc.get_callstack !opt_backtrace_length in
   Fatal_error (Err_unreachable (l, ocaml_pos, backtrace, m))

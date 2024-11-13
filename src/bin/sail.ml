@@ -647,9 +647,12 @@ let main () =
 
   if !opt_memo_z3 then Constraint.save_digests ();
 
+  Pretty_print_sail.dump_ast_to_file "np_debug_1.dump" ast;
   if !opt_slice_instantiation_types then (
     let sail_dir = Reporting.get_sail_dir Locations.sail_dir in
+    Pretty_print_sail.dump_ast_to_file "np_debug_2.dump" ast;
     let ast = Callgraph.slice_instantiation_types sail_dir ast in
+    Pretty_print_sail.dump_ast_to_file "np_debug_3.dump" ast;
     let filename = Option.value ~default:"out.sail" !opt_file_out in
     let chan = open_out filename in
     Pretty_print_sail.output_ast chan (Type_check.strip_ast ast);
@@ -657,6 +660,7 @@ let main () =
   );
 
   if !Interactive.opt_interactive then (
+    Pretty_print_sail.dump_ast_to_file "np_debug_4.dump" ast;
     let script =
       match !opt_interactive_script with
       | None -> []

@@ -2331,8 +2331,10 @@ module Make (C : CONFIG) = struct
     toplevel_lets_of_defs ast.defs |> IdSet.elements
 
   let compile_ast ctx ast =
+    Pretty_print_sail.dump_ast_to_file "np_core_0.ast" ast;
     let module G = Graph.Make (Callgraph.Node) in
     let g = Callgraph.graph_of_ast ast in
+    Callgraph.dump_graph_to_file "callgraph.dot" g;
     let module NodeSet = Set.Make (Callgraph.Node) in
     let roots = Specialize.get_initial_calls () |> List.map (fun id -> Callgraph.Function id) |> NodeSet.of_list in
     let roots = NodeSet.add (Callgraph.Type (mk_id "exception")) roots in
@@ -2343,7 +2345,9 @@ module Make (C : CONFIG) = struct
       NodeSet.union (toplevel_lets_of_ast ast |> List.map (fun id -> Callgraph.Letbind id) |> NodeSet.of_list) roots
     in
     let g = G.prune roots NodeSet.empty g in
+    Callgraph.dump_graph_to_file "callgraph_pruned.dot" g;
     let ast = Callgraph.filter_ast NodeSet.empty g ast in
+    Pretty_print_sail.dump_ast_to_file "np_core_0b.ast" ast;
 
     if !opt_memo_cache then (
       try
@@ -2363,6 +2367,7 @@ module Make (C : CONFIG) = struct
         (1, [], ctx) ast.defs
     in
     let cdefs = List.concat (List.rev chunks) in
+    Jib_util.dump_cdefs_to_file "np_core_1.cdefs" cdefs;
 
     (* If we don't have an exception type, add a dummy one *)
     let dummy_exn = mk_id "__dummy_exn#" in
@@ -2379,10 +2384,15 @@ module Make (C : CONFIG) = struct
       else (cdefs, ctx)
     in
     let cdefs, ctx = specialize_functions ctx cdefs in
+    Jib_util.dump_cdefs_to_file "np_core_3.cdefs" cdefs;
     let cdefs = sort_ctype_defs true cdefs in
+    Jib_util.dump_cdefs_to_file "np_core_4.cdefs" cdefs;
     let cdefs, ctx = specialize_variants ctx [] cdefs in
+    Jib_util.dump_cdefs_to_file "np_core_5.cdefs" cdefs;
     let cdefs = make_calls_precise ctx cdefs in
+    Jib_util.dump_cdefs_to_file "np_core_6.cdefs" cdefs;
     let cdefs = sort_ctype_defs false cdefs in
+    Jib_util.dump_cdefs_to_file "np_core_7.cdefs" cdefs;
     (cdefs, ctx)
 end
 

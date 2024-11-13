@@ -101,7 +101,10 @@ module Node = struct
   type t = node
   let compare n1 n2 =
     let lex_ord c1 c2 = if c1 = 0 then c2 else c1 in
-    lex_ord (compare (node_kind n1) (node_kind n2)) (Id.compare (node_id n1) (node_id n2))
+    let res = lex_ord (compare (node_kind n1) (node_kind n2)) (Id.compare (node_id n1) (node_id n2)) in
+    if String.equal "execute_instruction" (string_of_id @@ node_id n1) then
+        prerr_endline @@ Printf.sprintf "[DEBUG-CUSTOM] Node.compare = %-3d  for  %-40s  %-40s" res (string_of_node n1) (string_of_node n2);
+    res
 end
 
 module NodeSet = Set.Make (Node)
@@ -434,7 +437,11 @@ let filter_ast_extra cuts g ast keep_std =
   let rec filter_ast' g =
     let module NM = Map.Make (Node) in
     let defines_nodes def = not (NS.is_empty (nodes_of_def def)) in
-    let in_graph def = NS.exists (fun n -> NM.mem n g) (nodes_of_def def) in
+    let in_graph def = NS.exists (fun n ->
+        let res = NM.mem n g in
+        prerr_endline @@ Printf.sprintf "[DEBUG-CUSTOM] NM.mem = %-5s  for  %s" (string_of_bool res) (string_of_node n);
+        res
+    ) (nodes_of_def def) in
     let is_cut def = NS.subset (nodes_of_def def) cuts in
     function
     | DEF_aux (DEF_overload (id, overloads), def_annot) :: defs -> begin
@@ -468,6 +475,8 @@ let filter_ast_extra cuts g ast keep_std =
         )
         else def :: filter_ast' g defs
     | def :: defs when defines_nodes def ->
+        let msg = if not (in_graph def) then "Not in graph" else if is_cut def then "Is cut" else "OK" in
+        prerr_endline @@ Printf.sprintf "[DEBUG-CUSTOM] ids_of_def : %-14s <%-40s> <%s>" msg (string_of_def def) (string_of_nodes @@ nodes_of_def def) ;
         if in_graph def && not (is_cut def) then def :: filter_ast' g defs else filter_ast' g defs
     | def :: defs -> def :: filter_ast' g defs
     | [] -> []
