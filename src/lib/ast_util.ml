@@ -2338,3 +2338,6 @@ let rec simple_string_of_loc = function
   | Parse_ast.Generated l -> "Generated(" ^ simple_string_of_loc l ^ ")"
   | Parse_ast.Hint (_, l1, l2) -> "Hint(_," ^ simple_string_of_loc l1 ^ "," ^ simple_string_of_loc l2 ^ ")"
   | Parse_ast.Range (lx1, lx2) -> "Range(" ^ string_of_lx lx1 ^ "->" ^ string_of_lx lx2 ^ ")"
+
+let string_of_def def : string =
+  IdSet.fold (fun id acc -> acc ^ ", " ^ (string_of_id id)) (ids_of_def def) ""

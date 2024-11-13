@@ -946,3 +946,9 @@ module Document = struct
     ToBuffer.pretty 1. line_width b doc;
     Buffer.contents b
 end
+
+
+let dump_ast_to_file filename ast =
+  let chan = open_out filename in
+  output_ast chan (Type_check.strip_ast ast);
+  close_out chan

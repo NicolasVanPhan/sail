@@ -641,3 +641,5 @@ val quant_item_subst_kid : kid -> kid -> quant_item -> quant_item
 val typquant_subst_kid : kid -> kid -> typquant -> typquant
 
 val simple_string_of_loc : Parse_ast.l -> string
+
+val string_of_def : ('a, 'b) def -> string

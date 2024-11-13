@@ -85,6 +85,18 @@ let node_kind = function
   | LoopMeasures _ -> 8
   | Outcome _ -> 9
 
+let string_of_node : node -> string  = function
+  | Register           id -> Printf.sprintf " Register        <%-50s>" (string_of_id id)
+  | Function           id -> Printf.sprintf " Function        <%-50s>" (string_of_id id)
+  | Mapping            id -> Printf.sprintf " Mapping         <%-50s>" (string_of_id id)
+  | Letbind            id -> Printf.sprintf " Letbind         <%-50s>" (string_of_id id)
+  | Type               id -> Printf.sprintf " Type            <%-50s>" (string_of_id id)
+  | Overload           id -> Printf.sprintf " Overload        <%-50s>" (string_of_id id)
+  | Constructor        id -> Printf.sprintf " Constructor     <%-50s>" (string_of_id id)
+  | FunctionMeasure    id -> Printf.sprintf " FunctionMeasure <%-50s>" (string_of_id id)
+  | LoopMeasures       id -> Printf.sprintf " LoopMeasures    <%-50s>" (string_of_id id)
+  | Outcome            id -> Printf.sprintf " Outcome         <%-50s>" (string_of_id id)
+
 module Node = struct
   type t = node
   let compare n1 n2 =
@@ -96,6 +108,9 @@ module NodeSet = Set.Make (Node)
 module NS = NodeSet
 module NodeMap = Map.Make (Node)
 module G = Graph.Make (Node)
+
+let string_of_nodes (nodes : NS.t) : string =
+  NS.fold (fun node acc -> acc ^ ", " ^ (string_of_node node)) nodes ""
 
 let builtins =
   let open Type_check in
@@ -573,3 +588,10 @@ let slice_instantiation_types sail_dir ast =
   let g = G.prune roots NodeSet.empty g in
   let ast = filter_ast_extra NodeSet.empty g ast false in
   filter_library_files sail_dir ast
+
+let dump_graph_to_file filename g =
+  let chan = open_out filename in
+  let node_color _ = "black" in
+  let edge_color _ _ = "black" in
+  let string_of_node = string_of_node in
+  G.make_dot ~node_color ~edge_color ~string_of_node chan g;

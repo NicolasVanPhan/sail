@@ -225,3 +225,9 @@ val cdef_map_cval : (cval -> cval) -> cdef -> cdef
 val cdef_concatmap_instr : (instr -> instr list) -> cdef -> cdef
 
 val c_ast_registers : cdef list -> (id * ctyp * instr list) list
+
+
+val string_of_cdef : cdef -> string
+val dump_cdefs_to_file : string -> cdef list -> unit
+val string_of_ctype_def : Jib.ctype_def -> string
+val string_of_jib_name : Jib.name -> string

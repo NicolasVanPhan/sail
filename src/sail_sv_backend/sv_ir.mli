@@ -176,3 +176,5 @@ val visit_sv_statement : svir_visitor -> sv_statement -> sv_statement
 val visit_sv_def : svir_visitor -> sv_def -> sv_def
 
 val visit_sv_defs : svir_visitor -> sv_def list -> sv_def list
+
+val string_of_svd : sv_def -> string

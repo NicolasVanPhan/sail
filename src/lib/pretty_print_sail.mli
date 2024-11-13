@@ -129,3 +129,5 @@ module Document : sig
 
   val to_string : ?line_width:int -> PPrint.document -> string
 end
+
+val dump_ast_to_file : string -> Type_check.typed_ast -> unit

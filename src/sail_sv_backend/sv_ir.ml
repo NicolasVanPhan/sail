@@ -372,3 +372,13 @@ class empty_svir_visitor : svir_visitor =
     method vstatement _ = DoChildren
     method vdef _ = DoChildren
   end
+
+let string_of_svd (SVD_aux(svdef, _) : sv_def) : string =
+  match svdef with
+  | SVD_null                               -> Printf.sprintf "SVD_null"
+  | SVD_type         ctdef                 -> Printf.sprintf "SVD_type <%s>" (string_of_ctype_def ctdef)
+  | SVD_module       sv_module             -> Printf.sprintf "SVD_module <%s>" (string_of_sv_name sv_module.name)
+  | SVD_var          (jib_name, _)         -> Printf.sprintf "SVD_var <%s>" (string_of_jib_name jib_name)
+  | SVD_fundef       sv_function           -> Printf.sprintf "SVD_fundef <%s>" (string_of_sv_name sv_function.function_name)
+  | SVD_instantiate  inst                  -> Printf.sprintf "SVD_instantiate <m=%s, i=%s>" (string_of_sv_name inst.module_name) inst.instance_name
+  | SVD_always_comb  sv_statement          -> Printf.sprintf "SVD_always_comb"

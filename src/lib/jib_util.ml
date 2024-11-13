@@ -1118,3 +1118,38 @@ let instr_split_at f =
     | instr :: instrs -> instr_split_at' f (instr :: before) instrs
   in
   instr_split_at' f []
+
+
+let string_of_cdef (CDEF_aux (aux, _) : Jib.cdef) : string =
+  let string_of_list string_of_x l =
+    (List.fold_left (fun s x -> s ^ ", " ^ string_of_x x) "<" (List.rev l)) ^ ">"
+  in
+  match aux with
+  | CDEF_register           (id, ctyp, instrs)                -> Printf.sprintf "CDEF_register - %s" (string_of_id id)
+  | CDEF_let                (n, bindings, instrs)             -> Printf.sprintf "CDEF_let      - %s" (string_of_list (fun x -> string_of_id @@ fst x) bindings)
+  | CDEF_fundef             (id, heap_return, args, instrs)   -> Printf.sprintf "CDEF_fundef   - %s" (string_of_id id)
+  | CDEF_startup            (id, instrs)                      -> Printf.sprintf "CDEF_startup  - %s" (string_of_id id)
+  | CDEF_finish             (id, instrs)                      -> Printf.sprintf "CDEF_finish   - %s" (string_of_id id)
+  | CDEF_val                (id, extern, ctyps, ctyp)         -> Printf.sprintf "CDEF_val      - %s" (string_of_id id)
+  | CDEF_type               tdef                              -> Printf.sprintf "CDEF_type     - "
+  | CDEF_pragma             (name, str)                       -> Printf.sprintf "CDEF_pragma   - "
+
+let dump_cdefs_to_file filename (cdefs : Jib.cdef list) : unit =
+  let chan = open_out filename in
+  List.iter (fun cdef -> Printf.fprintf chan "%s\n" (string_of_cdef cdef)) cdefs;
+  close_out chan
+
+let string_of_ctype_def : Jib.ctype_def -> string = function
+ | CTD_enum       ( id , _) -> Printf.sprintf "CTD_enum     <%s>" (string_of_id id)
+ | CTD_struct     ( id , _) -> Printf.sprintf "CTD_struct   <%s>" (string_of_id id)
+ | CTD_variant    ( id , _) -> Printf.sprintf "CTD_variant  <%s>" (string_of_id id)
+ | CTD_abstract   ( id , _) -> Printf.sprintf "CTD_abstract <%s>" (string_of_id id)
+
+let string_of_jib_name : Jib.name -> string = function
+ | Name                           (id , n)      -> Printf.sprintf "Name              <%s, %d>" (string_of_id id) n
+ | Have_exception                 (n)           -> Printf.sprintf "Have_exception    <%d>" n
+ | Current_exception              (n)           -> Printf.sprintf "Current_exception <%d>" n
+ | Throw_location                 (n)           -> Printf.sprintf "Throw_location    <%d>" n
+ | Channel                        (_ , n)       -> Printf.sprintf "Channel           <_, %d>" n
+ | Memory_writes                  (n)           -> Printf.sprintf "Memory_writes     <%d>" n
+ | Return                         (n)           -> Printf.sprintf "Return            <%d>" n

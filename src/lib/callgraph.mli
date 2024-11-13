@@ -96,3 +96,7 @@ val filter_ast_extra : Set.Make(Node).t -> callgraph -> ('a, 'b) ast -> bool -> 
 val top_sort_defs : Type_check.typed_ast -> Type_check.typed_ast
 
 val slice_instantiation_types : string -> Type_check.typed_ast -> Type_check.typed_ast
+
+val string_of_node : node -> string
+
+val dump_graph_to_file : string -> G.graph -> unit
