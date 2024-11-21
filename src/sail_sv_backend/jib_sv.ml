@@ -810,7 +810,7 @@ module Make (Config : CONFIG) = struct
           ^^ separate space
                [
                  string "typedef";
-                 string "union";
+                 string "struct";
                  string "packed";
                  group
                    (lbrace
