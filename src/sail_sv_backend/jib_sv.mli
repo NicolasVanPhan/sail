@@ -81,6 +81,7 @@ module type CONFIG = sig
 
   val never_pack_unions : bool
   val union_padding : bool
+  val no_unions : bool
   val unreachable : string list
   val comb : bool
   val ignore : string list
