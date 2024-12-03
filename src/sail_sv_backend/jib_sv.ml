@@ -2340,7 +2340,7 @@ module Make (Config : CONFIG) = struct
     }
 
   let rec pp_module m =
-    let params = if m.recursive then space ^^ string "#(parameter RECURSION_DEPTH = 10)" ^^ space else empty in
+    let params = if m.recursive then space ^^ string "#(parameter RECURSION_DEPTH = 2)" ^^ space else empty in
     let ports =
       match (m.input_ports, m.output_ports) with
       | [], [] -> semi
