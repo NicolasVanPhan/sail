@@ -572,6 +572,7 @@ module Make (Config : CONFIG) = struct
       (struct
         let max_unknown_bitvector_width = Config.max_unknown_bitvector_width
         let max_unknown_integer_width = Config.max_unknown_integer_width
+        let no_strings = Config.no_strings
       end)
       ()
 

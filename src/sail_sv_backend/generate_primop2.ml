@@ -82,6 +82,7 @@ module Make
     (Config : sig
       val max_unknown_bitvector_width : int
       val max_unknown_integer_width : int
+      val no_strings : bool
     end)
     () : S = struct
   let generated_library_defs = ref (StringSet.empty, [])
@@ -311,12 +312,13 @@ module Make
               svs_raw (pf "return {\"0b\", zeros.substr(0, %d - bstr.len()), bstr}" (width - 1)) ~inputs:[zeros; bstr];
             ]
         in
+        let svs_raw_lines = if Config.no_strings then [svs_raw (pf "return SAIL_UNIT")] else vars @ body in
         SVD_fundef
           {
             function_name = SVN_string function_name;
             return_type = Some CT_string;
             params = [(mk_id "b", CT_fbits width)];
-            body = mk_statement (SVS_block (List.map mk_statement (vars @ body)));
+            body = mk_statement (SVS_block (List.map mk_statement svs_raw_lines));
           }
     )
 
@@ -407,18 +409,16 @@ module Make
     register_library_def name (fun () ->
         let i = primop_name "i" in
         let s = primop_name "s" in
+        let svs_raw_lines =
+          if Config.no_strings then [svs_raw (pf "return SAIL_UNIT")]
+          else [SVS_var (s, CT_string, None); svs_raw "s.itoa(i)" ~inputs:[i] ~outputs:[s]; SVS_return (Var s)]
+        in
         SVD_fundef
           {
             function_name = SVN_string name;
             return_type = Some CT_string;
             params = [(mk_id "i", ctyp)];
-            body =
-              mk_statement
-                (SVS_block
-                   (List.map mk_statement
-                      [SVS_var (s, CT_string, None); svs_raw "s.itoa(i)" ~inputs:[i] ~outputs:[s]; SVS_return (Var s)]
-                   )
-                );
+            body = mk_statement (SVS_block (List.map mk_statement svs_raw_lines));
           }
     )
 
