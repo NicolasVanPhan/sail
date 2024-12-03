@@ -2356,7 +2356,7 @@ module Make (Config : CONFIG) = struct
     }
 
   let rec pp_module ?(prepend_globals = true) m =
-    let params = if m.recursive then space ^^ string "#(parameter RECURSION_DEPTH = 10)" ^^ space else empty in
+    let params = if m.recursive then space ^^ string "#(parameter RECURSION_DEPTH = 2)" ^^ space else empty in
     let prepend_globals =
       let module_name = string_of_sv_name m.name in
       let starts_with ~prefix str =
