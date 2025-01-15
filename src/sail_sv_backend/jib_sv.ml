@@ -2274,7 +2274,6 @@ module Make (Config : CONFIG) = struct
               mk_statement (SVS_continuous_assign (SVP_id (Name (reg, -1)), Var (Name (prepend_id "out_" reg, -1))))
             )
             exposed_registers
-        @ [mk_statement (svs_raw "sail_flush_writes(out_memory_writes)" ~inputs:[Name (mk_id "out_memory_writes", -1)])]
       in
       if clk then (
         let reset_regs, inout_regs =
