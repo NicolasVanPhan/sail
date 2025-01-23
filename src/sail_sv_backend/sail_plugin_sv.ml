@@ -229,6 +229,7 @@ let verilog_rewrites =
     ("merge_function_clauses", []);
     ("recheck_defs", []);
     ("constant_fold", [String_arg "systemverilog"]);
+    ("remove_global_vars", []);
     ("unroll_constant_loops", [If_flag opt_unroll_loops]);
   ]
 

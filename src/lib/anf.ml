@@ -98,6 +98,7 @@ and 'a apat_aux =
 and 'a aval =
   | AV_lit of lit * 'a
   | AV_id of id * 'a lvar
+  (* | AV_gid of id * 'a lvar *) (* TODO NP *)
   | AV_abstract of id * 'a
   | AV_ref of id * 'a lvar
   | AV_tuple of 'a aval list
@@ -765,7 +766,7 @@ let rec anf (E_aux (e_aux, (l, tannot)) as exp) =
       let aval1, wrap1 = to_aval aexp1 in
       let aval2, wrap2 = to_aval aexp2 in
       wrap1 (wrap2 (mk_aexp (AE_app (mk_id "sail_cons", [aval1; aval2], typ_of exp))))
-  | E_id id ->
+  | E_id id | E_gid id ->
       let lvar = Env.lookup_id id (env_of exp) in
       begin
         match lvar with _ -> mk_aexp (AE_val (AV_id (id, lvar)))
