@@ -352,7 +352,9 @@ module Make (C : CONFIG) = struct
           ([iinit l ctyp' gs cval], V_id (gs, ctyp'), [iclear ctyp' gs])
         )
         else ([], cval, [])
+    | AV_gid (id, Enum typ)
     | AV_id (id, Enum typ) -> ([], V_member (id, ctyp_of_typ ctx typ), [])
+    | AV_gid (id, typ)
     | AV_id (id, typ) -> begin
         match Bindings.find_opt id ctx.locals with
         | Some (_, ctyp) -> ([], V_id (name id, ctyp), [])
