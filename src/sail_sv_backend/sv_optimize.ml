@@ -316,6 +316,7 @@ module RemoveUnusedVariables = struct
         else Forbid
     | Field (_, _, x) -> can_propagate stack name x
     | Unwrap (_, _, x) -> can_propagate stack name x
+    | Global_var v
     | Var v ->
         let rec walk found = function
           | Block (_, vars) :: tail ->
@@ -365,6 +366,7 @@ module RemoveUnusedVariables = struct
 
       method! vsmt_exp =
         function
+        | Global_var name
         | Var name -> begin
             match self#get_vnum name with
             | Some (_, vnum, ctyp) ->
@@ -524,6 +526,7 @@ module RemoveUnusedVariables = struct
     | None -> ()
 
   let rec smt_uses ?(propagated = false) stack uses = function
+    | Global_var name
     | Var name -> add_use ~read:true ~propagated name stack uses
     | Bool_lit _ | Bitvec_lit _ | Real_lit _ | String_lit _ | Unit | Member _ | Empty_list -> ()
     | SignExtend (_, _, exp)
