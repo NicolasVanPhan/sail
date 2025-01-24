@@ -593,17 +593,17 @@ module Make (Config : CONFIG) = struct
     in
     Str.string_match regexp s 0
 
-  let pp_id_string id =
+  let pp_id_string ?(is_global = false) id =
     let s = string_of_id id in
     if
       valid_sv_identifier s
       && (not (has_bad_prefix s))
       && (not (StringSet.mem s Keywords.sv_reserved_words))
       && not (StringSet.mem s Keywords.sv_used_words)
-    then s
+    then (if is_global then "`SAIL_GLOBALS." ^ s else s)
     else Util.zencode_string s
 
-  let pp_id id = string (pp_id_string id)
+  let pp_id ?(is_global = false) id = string (pp_id_string ~is_global id)
 
   let pp_sv_name_string = function SVN_id id -> pp_id_string id | SVN_string s -> s
 
@@ -720,10 +720,10 @@ module Make (Config : CONFIG) = struct
   let mapM = Smt_gen.mapM
   let fmap = Smt_gen.fmap
 
-  let pp_name =
+  let pp_name ?(is_global = false) =
     let ssa_num n = if n = -1 then empty else string ("_" ^ string_of_int n) in
     function
-    | Name (id, n) -> pp_id id ^^ ssa_num n
+    | Name (id, n) -> pp_id ~is_global id ^^ ssa_num n
     | Have_exception n -> string "sail_have_exception" ^^ ssa_num n
     | Current_exception n -> string "sail_current_exception" ^^ ssa_num n
     | Throw_location n -> string "sail_throw_location" ^^ ssa_num n
@@ -1070,6 +1070,7 @@ module Make (Config : CONFIG) = struct
         else if n = m then braces (pp_smt x) ^^ lbracket ^^ string (string_of_int n) ^^ rbracket
         else braces (pp_smt x) ^^ lbracket ^^ string (string_of_int n) ^^ colon ^^ string (string_of_int m) ^^ rbracket
     | Var v -> pp_name v
+    | Global_var v -> pp_name ~is_global:true v
     | Tester (ctor, v) ->
         opt_parens
           (separate space
