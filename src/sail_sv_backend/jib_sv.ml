@@ -552,6 +552,7 @@ module type CONFIG = sig
   val max_unknown_bitvector_width : int
   val line_directives : bool
   val no_strings : bool
+  val no_toplevel_globals : bool
   val no_packed : bool
   val no_assertions : bool
   val never_pack_unions : bool
@@ -600,7 +601,7 @@ module Make (Config : CONFIG) = struct
       && (not (has_bad_prefix s))
       && (not (StringSet.mem s Keywords.sv_reserved_words))
       && not (StringSet.mem s Keywords.sv_used_words)
-    then (if is_global then "`SAIL_GLOBALS." ^ s else s)
+    then (if Config.no_toplevel_globals && is_global then "`SAIL_GLOBALS." ^ s else s)
     else Util.zencode_string s
 
   let pp_id ?(is_global = false) id = string (pp_id_string ~is_global id)

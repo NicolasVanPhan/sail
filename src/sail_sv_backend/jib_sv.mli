@@ -74,6 +74,8 @@ module type CONFIG = sig
       SystemVerilog. *)
   val no_strings : bool
 
+  val no_toplevel_globals : bool
+
   val no_packed : bool
 
   (** If true, then all assertions are treated as no-ops *)
