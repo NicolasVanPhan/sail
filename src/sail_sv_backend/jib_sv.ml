@@ -363,7 +363,7 @@ type spec_info = {
   (* A list of constructor functions *)
   constructors : IdSet.t;
   (* Global letbindings *)
-  global_lets : NameSet.t;
+  global_lets : ctyp NameMap.t;
   (* Global let numbers *)
   global_let_numbers : Ast.id list IntMap.t;
   (* Function footprint information *)
@@ -407,12 +407,12 @@ let collect_spec_info ctx cdefs =
       (fun (names, nums) cdef ->
         match cdef with
         | CDEF_aux (CDEF_let (n, bindings, _), _) ->
-            ( List.fold_left (fun acc (id, _) -> NameSet.add (name id) acc) names bindings,
+            ( List.fold_left (fun acc (id, ctyp) -> NameMap.add (name id) ctyp acc) names bindings,
               IntMap.add n (List.map fst bindings) nums
             )
         | _ -> (names, nums)
       )
-      (NameSet.empty, IntMap.empty) cdefs
+      (NameMap.empty, IntMap.empty) cdefs
   in
   let footprints =
     List.fold_left
@@ -1858,9 +1858,10 @@ module Make (Config : CONFIG) = struct
     in
 
     let open Jib_ssa in
+    let global_names = NameSet.of_list @@ List.map fst @@ NameMap.bindings spec_info.global_lets in
     let _, end_node, cfg =
       ssa
-        ~globals:(NameSet.diff spec_info.global_lets (NameSet.of_list (List.map Jib_util.name params)))
+        ~globals:(NameSet.diff global_names (NameSet.of_list (List.map Jib_util.name params)))
         ?debug_prefix:(Option.map (fun _ -> string_of_sv_name name) debug_attr)
         (visit_instrs (new thread_registers ctx spec_info) body)
     in
@@ -2163,6 +2164,12 @@ module Make (Config : CONFIG) = struct
     let prefix = Attr.get_string ~default:"SAIL START\\n" "prefix" attr in
     let suffix = Attr.get_string ~default:"SAIL END\\n" "suffix" attr in
 
+    let global_defs =
+      if Config.no_toplevel_globals
+      then NameMap.fold (fun name ctyp acc -> SVD_var (name, ctyp) :: acc) spec_info.global_lets []
+      else []
+    in
+
     let register_resets, register_inputs, register_outputs =
       Bindings.fold
         (fun reg ctyp (resets, ins, outs) ->
@@ -2325,7 +2332,7 @@ module Make (Config : CONFIG) = struct
       | _ -> ([], [mk_port Jib_util.return ret_ctyp])
     in
     let defs =
-      register_inputs @ register_outputs @ throws_outputs @ channel_outputs @ memory_writes @ return_def
+      global_defs @ register_inputs @ register_outputs @ throws_outputs @ channel_outputs @ memory_writes @ return_def
       @ initialize_letbindings @ initialize_registers @ [instantiate_main; always_block]
     in
     {
@@ -2401,7 +2408,11 @@ module Make (Config : CONFIG) = struct
   and pp_def in_module (SVD_aux (aux, _)) =
     match aux with
     | SVD_null -> empty
-    | SVD_var (id, ctyp) -> wrap_type ctyp (pp_name id) ^^ semi
+    | SVD_var (id, ctyp) -> (
+        (* If globals are moved to the sail_toplevel module, don't print them at toplevel *)
+        if Config.no_toplevel_globals && Option.is_none in_module then empty
+        else wrap_type ctyp (pp_name id) ^^ semi
+      )
     | SVD_initial statement -> string "initial" ^^ space ^^ pp_statement ~terminator:semi statement
     | SVD_always_ff statement ->
         let posedge_clk = char '@' ^^ parens (string "posedge" ^^ space ^^ string "clk") in
