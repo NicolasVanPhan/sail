@@ -553,6 +553,7 @@ let collect_spec_info ctx cdefs =
 module type CONFIG = sig
   val max_unknown_integer_width : int
   val max_unknown_bitvector_width : int
+  val global_prefix : string option
   val line_directives : bool
   val no_strings : bool
   val no_packed : bool
@@ -616,9 +617,11 @@ module Make (Config : CONFIG) = struct
       end)
       ()
 
-  let pp_id_string id = NameGen.to_string () id
+  let pp_id_string ?(is_global = false) id =
+    let s = NameGen.to_string () id in
+    match Config.global_prefix with Some prefix when is_global -> prefix ^ "." ^ s | _ -> s
 
-  let pp_id id = string (pp_id_string id)
+  let pp_id ?(is_global = false) id = string (pp_id_string ~is_global id)
 
   let pp_sv_name_string = function SVN_id id -> pp_id_string id | SVN_string s -> s
 
@@ -740,10 +743,10 @@ module Make (Config : CONFIG) = struct
   let mapM = Smt_gen.mapM
   let fmap = Smt_gen.fmap
 
-  let pp_name =
+  let pp_name ?(is_global = false) =
     let ssa_num n = if n = -1 then empty else string ("_" ^ string_of_int n) in
     function
-    | Name (id, n) -> pp_id id ^^ ssa_num n
+    | Name (id, n) -> pp_id ~is_global id ^^ ssa_num n
     | Have_exception n -> string "sail_have_exception" ^^ ssa_num n
     | Current_exception n -> string "sail_current_exception" ^^ ssa_num n
     | Throw_location n -> string "sail_throw_location" ^^ ssa_num n
@@ -751,6 +754,9 @@ module Make (Config : CONFIG) = struct
     | Channel (Chan_stderr, n) -> string "sail_stderr" ^^ ssa_num n
     | Memory_writes n -> string "sail_writes" ^^ ssa_num n
     | Return n -> string "sail_return" ^^ ssa_num n
+
+  let pp_var spec_info name =
+    if NameSet.mem name spec_info.global_lets then pp_name ~is_global:true name else pp_name ~is_global:false name
 
   let wrap_type ctyp doc =
     match sv_ctyp ctyp with
@@ -1017,7 +1023,8 @@ module Make (Config : CONFIG) = struct
     | _ -> None
 
   (* Convert a SMTLIB expression into SystemVerilog *)
-  let rec pp_smt ?(need_parens = false) =
+  let rec pp_smt spec_info ?(need_parens = false) =
+    let pp_smt ?(need_parens = false) exp = pp_smt spec_info ~need_parens exp in
     let pp_smt_parens exp = pp_smt ~need_parens:true exp in
     let opt_parens doc = if need_parens then parens doc else doc in
     let rec pp_smt_ite = function
@@ -1127,9 +1134,9 @@ module Make (Config : CONFIG) = struct
     | Tl (op, arg) -> string op ^^ parens (pp_smt arg)
     | _ -> empty
 
-  let sv_cval cval =
+  let sv_cval spec_info cval =
     let* smt = Smt.smt_cval cval in
-    return (pp_smt smt)
+    return (pp_smt spec_info smt)
 
   let rec sv_clexp = function
     | CL_id (id, _) -> pp_name id
@@ -1437,76 +1444,85 @@ module Make (Config : CONFIG) = struct
     | I_clear _ | I_reset _ | I_reinit _ ->
         Reporting.unreachable l __POS__ "Cleanup commands should not appear in SystemVerilog backend"
 
-  let rec pp_place = function
-    | SVP_id id -> pp_name id
-    | SVP_index (place, i) -> pp_place place ^^ lbracket ^^ pp_smt i ^^ rbracket
-    | SVP_field (place, field) -> pp_place place ^^ dot ^^ pp_id field
-    | SVP_multi places -> parens (separate_map (comma ^^ space) pp_place places)
+  let rec pp_place spec_info = function
+    | SVP_id id -> pp_var spec_info id
+    | SVP_index (place, i) -> pp_place spec_info place ^^ lbracket ^^ pp_smt spec_info i ^^ rbracket
+    | SVP_field (place, field) -> pp_place spec_info place ^^ dot ^^ pp_id field
+    | SVP_multi places -> parens (separate_map (comma ^^ space) (pp_place spec_info) places)
     | SVP_void _ -> string "void"
 
   let pp_sv_name = function SVN_id id -> pp_id id | SVN_string s -> string s
 
-  let rec pp_statement ?(terminator = semi ^^ hardline) (SVS_aux (aux, l)) =
+  let rec pp_statement ?(terminator = semi ^^ hardline) spec_info (SVS_aux (aux, l)) =
     let ld = sv_line_directive l in
     match aux with
     | SVS_comment str -> concat_map string ["/* "; str; " */"]
     | SVS_split_comb -> string "/* split comb */"
     | SVS_assert (cond, msg) ->
         separate space
-          [string "if"; parens (pp_smt cond) ^^ semi; string "else"; string "$fatal" ^^ parens (pp_smt msg)]
+          [
+            string "if";
+            parens (pp_smt spec_info cond) ^^ semi;
+            string "else";
+            string "$fatal" ^^ parens (pp_smt spec_info msg);
+          ]
         ^^ terminator
     | SVS_foreach (i, exp, stmt) ->
-        separate space [string "foreach"; parens (pp_smt exp ^^ brackets (pp_sv_name i))]
-        ^^ nest 4 (hardline ^^ pp_statement ~terminator:empty stmt)
+        separate space [string "foreach"; parens (pp_smt spec_info exp ^^ brackets (pp_sv_name i))]
+        ^^ nest 4 (hardline ^^ pp_statement ~terminator:empty spec_info stmt)
         ^^ terminator
     | SVS_for (loop, stmt) ->
         let vars =
           let i, ctyp, init = loop.for_var in
-          separate space [wrap_type ctyp (pp_name i); equals; pp_smt init]
+          separate space [wrap_type ctyp (pp_name i); equals; pp_smt spec_info init]
         in
         let modifier =
           match loop.for_modifier with
           | SVF_increment i -> pp_name i ^^ string "++"
           | SVF_decrement i -> pp_name i ^^ string "--"
         in
-        separate space [string "for"; parens (separate (semi ^^ space) [vars; pp_smt loop.for_cond; modifier])]
-        ^^ nest 4 (hardline ^^ pp_statement ~terminator:empty stmt)
+        separate space
+          [string "for"; parens (separate (semi ^^ space) [vars; pp_smt spec_info loop.for_cond; modifier])]
+        ^^ nest 4 (hardline ^^ pp_statement ~terminator:empty spec_info stmt)
         ^^ terminator
     | SVS_var (id, ctyp, init_opt) -> begin
         match init_opt with
-        | Some init -> ld ^^ separate space [wrap_type ctyp (pp_name id); equals; pp_smt init] ^^ terminator
+        | Some init -> ld ^^ separate space [wrap_type ctyp (pp_name id); equals; pp_smt spec_info init] ^^ terminator
         | None -> ld ^^ wrap_type ctyp (pp_name id) ^^ terminator
       end
-    | SVS_return smt -> string "return" ^^ space ^^ pp_smt smt ^^ terminator
-    | SVS_assign (place, value) -> ld ^^ separate space [pp_place place; equals; pp_smt value] ^^ terminator
+    | SVS_return smt -> string "return" ^^ space ^^ pp_smt spec_info smt ^^ terminator
+    | SVS_assign (place, value) ->
+        ld ^^ separate space [pp_place spec_info place; equals; pp_smt spec_info value] ^^ terminator
     | SVS_continuous_assign (place, value) ->
-        ld ^^ separate space [pp_place place; string "<="; pp_smt value] ^^ terminator
+        ld ^^ separate space [pp_place spec_info place; string "<="; pp_smt spec_info value] ^^ terminator
     | SVS_call (place, ctor, args) ->
         ld
-        ^^ separate space [pp_place place; equals; pp_sv_name ctor]
-        ^^ parens (separate_map (comma ^^ space) pp_smt args)
+        ^^ separate space [pp_place spec_info place; equals; pp_sv_name ctor]
+        ^^ parens (separate_map (comma ^^ space) (pp_smt spec_info) args)
         ^^ terminator
     | SVS_if (_, None, None) -> empty
     | SVS_if (cond, None, Some else_block) ->
-        let cond = pp_smt (Fn ("not", [cond])) in
-        string "if" ^^ space ^^ parens cond ^^ space ^^ pp_statement else_block
+        let cond = pp_smt spec_info (Fn ("not", [cond])) in
+        string "if" ^^ space ^^ parens cond ^^ space ^^ pp_statement spec_info else_block
     | SVS_if (cond, Some then_block, None) ->
-        string "if" ^^ space ^^ parens (pp_smt cond) ^^ space ^^ pp_statement then_block
+        string "if" ^^ space ^^ parens (pp_smt spec_info cond) ^^ space ^^ pp_statement spec_info then_block
     | SVS_if (cond, Some then_block, Some else_block) ->
         string "if" ^^ space
-        ^^ parens (pp_smt cond)
+        ^^ parens (pp_smt spec_info cond)
         ^^ space
-        ^^ pp_statement ~terminator:hardline then_block
-        ^^ string "else" ^^ space ^^ pp_statement else_block
+        ^^ pp_statement ~terminator:hardline spec_info then_block
+        ^^ string "else" ^^ space ^^ pp_statement spec_info else_block
     | SVS_case { head_exp; cases; fallthrough } ->
-        let pp_case (exp, statement) = separate space [pp_smt exp; colon; pp_statement ~terminator:semi statement] in
+        let pp_case (exp, statement) =
+          separate space [pp_smt spec_info exp; colon; pp_statement ~terminator:semi spec_info statement]
+        in
         let pp_fallthrough = function
           | None -> empty
           | Some statement ->
-              hardline ^^ separate space [string "default"; colon; pp_statement ~terminator:semi statement]
+              hardline ^^ separate space [string "default"; colon; pp_statement ~terminator:semi spec_info statement]
         in
         string "case" ^^ space
-        ^^ parens (pp_smt head_exp)
+        ^^ parens (pp_smt spec_info head_exp)
         ^^ nest 4 (hardline ^^ separate_map hardline pp_case cases ^^ pp_fallthrough fallthrough)
         ^^ hardline ^^ string "endcase" ^^ terminator
     | SVS_block statements ->
@@ -1515,7 +1531,8 @@ module Make (Config : CONFIG) = struct
         string "begin"
         ^^ nest 4
              (hardline
-             ^^ concat (Util.map_last (fun last -> pp_statement ~terminator:(block_terminator last)) statements)
+             ^^ concat
+                  (Util.map_last (fun last -> pp_statement ~terminator:(block_terminator last) spec_info) statements)
              )
         ^^ hardline ^^ string "end" ^^ terminator
     | SVS_raw (s, _, _) -> string s ^^ terminator
@@ -1523,7 +1540,7 @@ module Make (Config : CONFIG) = struct
 
   let sv_instr spec_info ctx instr =
     let* statement_opt = svir_instr spec_info ctx instr in
-    match statement_opt with Some statement -> return (pp_statement statement) | None -> return empty
+    match statement_opt with Some statement -> return (pp_statement spec_info statement) | None -> return empty
 
   let sv_checked_instr spec_info ctx (I_aux (_, (_, l)) as instr) =
     let v, _ = Smt_gen.run (sv_instr spec_info ctx instr) l ctx in
@@ -2376,7 +2393,7 @@ module Make (Config : CONFIG) = struct
       defs = List.map mk_def defs;
     }
 
-  let rec pp_module ctx m =
+  let rec pp_module spec_info ctx m =
     let params = if m.recursive then space ^^ string "#(parameter RECURSION_DEPTH = 10)" ^^ space else empty in
     let ports =
       match (m.input_ports, m.output_ports) with
@@ -2400,10 +2417,10 @@ module Make (Config : CONFIG) = struct
       else doc
     in
     string "module" ^^ space ^^ pp_sv_name m.name ^^ params ^^ ports
-    ^^ generate (nest 4 (hardline ^^ separate_map hardline (pp_def ctx (Some m.name)) m.defs))
+    ^^ generate (nest 4 (hardline ^^ separate_map hardline (pp_def spec_info ctx (Some m.name)) m.defs))
     ^^ hardline ^^ string "endmodule"
 
-  and pp_fundef f =
+  and pp_fundef spec_info f =
     let ret_ty, typedef =
       match f.return_type with
       | Some ret_ctyp ->
@@ -2424,8 +2441,8 @@ module Make (Config : CONFIG) = struct
     let block_terminator last = if last then semi else semi ^^ hardline in
     let pp_body = function
       | SVS_aux (SVS_block statements, _) ->
-          concat (Util.map_last (fun last -> pp_statement ~terminator:(block_terminator last)) statements)
-      | statement -> pp_statement ~terminator:semi statement
+          concat (Util.map_last (fun last -> pp_statement ~terminator:(block_terminator last) spec_info) statements)
+      | statement -> pp_statement ~terminator:semi spec_info statement
     in
     typedef
     ^^ separate space [string "function"; string "automatic"; ret_ty; pp_sv_name f.function_name]
@@ -2434,31 +2451,31 @@ module Make (Config : CONFIG) = struct
     ^^ nest 4 (hardline ^^ pp_body f.body)
     ^^ hardline ^^ string "endfunction"
 
-  and pp_def ctx in_module (SVD_aux (aux, _)) =
+  and pp_def spec_info ctx in_module (SVD_aux (aux, _)) =
     match aux with
     | SVD_null -> empty
     | SVD_var (id, ctyp) -> wrap_type ctyp (pp_name id) ^^ semi
-    | SVD_initial statement -> string "initial" ^^ space ^^ pp_statement ~terminator:semi statement
+    | SVD_initial statement -> string "initial" ^^ space ^^ pp_statement ~terminator:semi spec_info statement
     | SVD_always_ff statement ->
         let posedge_clk = char '@' ^^ parens (string "posedge" ^^ space ^^ string "clk") in
-        separate space [string "always_ff"; posedge_clk; pp_statement ~terminator:semi statement]
-    | SVD_always_comb statement -> string "always_comb" ^^ space ^^ pp_statement ~terminator:semi statement
+        separate space [string "always_ff"; posedge_clk; pp_statement ~terminator:semi spec_info statement]
+    | SVD_always_comb statement -> string "always_comb" ^^ space ^^ pp_statement ~terminator:semi spec_info statement
     | SVD_instantiate { module_name; instance_name; input_connections; output_connections } ->
         let params =
           match in_module with
           | Some name when SVName.compare module_name name = 0 -> space ^^ string "#(RECURSION_DEPTH - 1)"
           | _ -> empty
         in
-        let inputs = List.map (fun exp -> pp_smt exp) input_connections in
-        let outputs = List.map pp_place output_connections in
+        let inputs = List.map (fun exp -> pp_smt spec_info exp) input_connections in
+        let outputs = List.map (pp_place spec_info) output_connections in
         let connections =
           match inputs @ outputs with
           | [] -> parens empty
           | connections -> parens (separate (comma ^^ space) connections)
         in
         pp_sv_name module_name ^^ params ^^ space ^^ string instance_name ^^ connections ^^ semi
-    | SVD_fundef f -> pp_fundef f
-    | SVD_module m -> pp_module ctx m
+    | SVD_fundef f -> pp_fundef spec_info f
+    | SVD_module m -> pp_module spec_info ctx m
     | SVD_type type_def -> pp_type_def ctx type_def
     | SVD_dpi_function { function_name; return_type; param_types } ->
         let ret_ty, typedef =
@@ -2507,7 +2524,7 @@ module Make (Config : CONFIG) = struct
     ^^ hardline ^^ string "endfunction"
 
   let sv_fundef spec_info ctx f params param_ctyps ret_ctyp body =
-    pp_module ctx (svir_module spec_info ctx f params param_ctyps ret_ctyp body)
+    pp_module spec_info ctx (svir_module spec_info ctx f params param_ctyps ret_ctyp body)
 
   let filter_clear = filter_instrs (function I_aux (I_clear _, _) -> false | _ -> true)
 
