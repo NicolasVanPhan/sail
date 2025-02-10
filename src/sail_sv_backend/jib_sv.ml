@@ -1065,7 +1065,8 @@ module Make (Config : CONFIG) = struct
       | Fn ("len", [Var v]) -> pp_var spec_info v ^^ dot ^^ string "sb_size"
       | Fn ("len", [x]) -> string "sail_bits_size" ^^ parens (pretty x)
       | Fn ("cons", [x; xs]) -> lbrace ^^ pretty x ^^ comma ^^ space ^^ pretty xs ^^ rbrace
-      | Fn ("str.++", xs) -> lbrace ^^ separate_map (comma ^^ space) pretty xs ^^ rbrace
+      | Fn ("str.++", xs) ->
+          if Config.no_strings then string "SAIL_UNIT" else lbrace ^^ separate_map (comma ^^ space) pretty xs ^^ rbrace
       | Fn ("Array", xs) -> squote ^^ lbrace ^^ separate_map (comma ^^ space) pretty xs ^^ rbrace
       | Fn (f, args) -> string f ^^ parens (separate_map (comma ^^ space) pretty args)
       | Store (_, store_fn, arr, i, x) -> string store_fn ^^ parens (separate_map (comma ^^ space) pretty [arr; i; x])
