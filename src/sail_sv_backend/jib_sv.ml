@@ -363,7 +363,7 @@ type spec_info = {
   (* A list of constructor functions *)
   constructors : IdSet.t;
   (* Global letbindings *)
-  global_lets : NameSet.t;
+  global_lets : ctyp NameMap.t;
   (* Global let numbers *)
   global_let_numbers : Ast.id list IntMap.t;
   (* Function footprint information *)
@@ -407,12 +407,12 @@ let collect_spec_info ctx cdefs =
       (fun (names, nums) cdef ->
         match cdef with
         | CDEF_aux (CDEF_let (n, bindings, _), _) ->
-            ( List.fold_left (fun acc (id, _) -> NameSet.add (name id) acc) names bindings,
+            ( List.fold_left (fun acc (id, ctyp) -> NameMap.add (name id) ctyp acc) names bindings,
               IntMap.add n (List.map fst bindings) nums
             )
         | _ -> (names, nums)
       )
-      (NameSet.empty, IntMap.empty) cdefs
+      (NameMap.empty, IntMap.empty) cdefs
   in
   let footprints =
     List.fold_left
@@ -736,7 +736,8 @@ module Make (Config : CONFIG) = struct
     | Return n -> string "sail_return" ^^ ssa_num n
 
   let pp_var spec_info name =
-    if NameSet.mem name spec_info.global_lets then pp_name ~is_global:true name else pp_name ~is_global:false name
+    let global_lets = NameSet.of_list @@ List.map fst @@ NameMap.bindings spec_info.global_lets in
+    if NameSet.mem name global_lets then pp_name ~is_global:true name else pp_name ~is_global:false name
 
   let wrap_type ctyp doc =
     match sv_ctyp ctyp with
@@ -1864,9 +1865,10 @@ module Make (Config : CONFIG) = struct
     in
 
     let open Jib_ssa in
+    let global_names = NameSet.of_list @@ List.map fst @@ NameMap.bindings spec_info.global_lets in
     let _, end_node, cfg =
       ssa
-        ~globals:(NameSet.diff spec_info.global_lets (NameSet.of_list (List.map Jib_util.name params)))
+        ~globals:(NameSet.diff global_names (NameSet.of_list (List.map Jib_util.name params)))
         ?debug_prefix:(Option.map (fun _ -> string_of_sv_name name) debug_attr)
         (visit_instrs (new thread_registers ctx spec_info) body)
     in
@@ -2168,7 +2170,17 @@ module Make (Config : CONFIG) = struct
     (* Text used to bracket output *)
     let prefix = Attr.get_string ~default:"SAIL START\\n" "prefix" attr in
     let suffix = Attr.get_string ~default:"SAIL END\\n" "suffix" attr in
-
+    let global_defs =
+      if Option.is_some Config.global_prefix then
+        NameMap.fold
+          (fun name ctyp acc ->
+            SVD_var (name, ctyp)
+            :: SVD_var (Name (mk_id ("setup_" ^ string_of_name ~zencode:false name), -1), ctyp)
+            :: acc
+          )
+          spec_info.global_lets []
+      else []
+    in
     let register_resets, register_inputs, register_outputs =
       Bindings.fold
         (fun reg ctyp (resets, ins, outs) ->
@@ -2244,7 +2256,7 @@ module Make (Config : CONFIG) = struct
               module_name;
               instance_name = sprintf "sail_inst_let_%d" n;
               input_connections = [];
-              output_connections = List.map (fun id -> SVP_id (name id)) ids;
+              output_connections = List.map (fun id -> SVP_id (name @@ prepend_id "setup_" id)) ids;
             }
         )
         (IntMap.bindings spec_info.global_let_numbers)
@@ -2270,6 +2282,20 @@ module Make (Config : CONFIG) = struct
               mk_statement (SVS_continuous_assign (SVP_id (Name (reg, -1)), Var (Name (prepend_id "out_" reg, -1))))
             )
             exposed_registers
+        @ ( if Option.is_some Config.global_prefix then (
+              let is_unit = function CT_unit -> true | _ -> false in
+              let mk_setup (jib_name, ctyp) =
+                let name = string_of_name ~zencode:false jib_name in
+                let raw = if is_unit ctyp
+                          then sprintf "// Dummy statement to keep declaration of '%s'" name
+                          else sprintf "%s = setup_%s" name name
+                in
+                mk_statement @@ svs_raw raw ~inputs:[jib_name]
+              in
+              List.map mk_setup (NameMap.bindings spec_info.global_lets)
+            )
+            else []
+          )
         @ [mk_statement (svs_raw "sail_flush_writes(out_memory_writes)" ~inputs:[Name (mk_id "out_memory_writes", -1)])]
       in
       if clk then (
@@ -2332,7 +2358,7 @@ module Make (Config : CONFIG) = struct
       | _ -> ([], [mk_port Jib_util.return ret_ctyp])
     in
     let defs =
-      register_inputs @ register_outputs @ throws_outputs @ channel_outputs @ memory_writes @ return_def
+      global_defs @ register_inputs @ register_outputs @ throws_outputs @ channel_outputs @ memory_writes @ return_def
       @ initialize_letbindings @ initialize_registers @ [instantiate_main; always_block]
     in
     {
@@ -2408,7 +2434,12 @@ module Make (Config : CONFIG) = struct
   and pp_def spec_info in_module (SVD_aux (aux, _)) =
     match aux with
     | SVD_null -> empty
-    | SVD_var (id, ctyp) -> wrap_type ctyp (pp_name id) ^^ semi
+    | SVD_var (id, ctyp) ->
+        if
+          (* If globals are moved to the sail_toplevel module, don't print them at toplevel *)
+          Option.is_some Config.global_prefix && Option.is_none in_module
+        then empty
+        else wrap_type ctyp (pp_name id) ^^ semi
     | SVD_initial statement -> string "initial" ^^ space ^^ pp_statement ~terminator:semi spec_info statement
     | SVD_always_ff statement ->
         let posedge_clk = char '@' ^^ parens (string "posedge" ^^ space ^^ string "clk") in
