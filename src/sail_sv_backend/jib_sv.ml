@@ -2383,6 +2383,7 @@ module Make (Config : CONFIG) = struct
     }
 
   let rec pp_module spec_info m =
+    if String.equal "fetch" (string_of_sv_name m.name) then string "/* module fetch commented out */" ^^ empty else (
     let params =
       if m.recursive then
         space ^^ string (Printf.sprintf "#(parameter RECURSION_DEPTH = %d)" Config.recursion_depth) ^^ space
@@ -2412,6 +2413,7 @@ module Make (Config : CONFIG) = struct
     string "module" ^^ space ^^ pp_sv_name m.name ^^ params ^^ ports
     ^^ generate (nest 4 (hardline ^^ separate_map hardline (pp_def spec_info (Some m.name)) m.defs))
     ^^ hardline ^^ string "endmodule"
+    )
 
   and pp_fundef spec_info f =
     let ret_ty, typedef =
